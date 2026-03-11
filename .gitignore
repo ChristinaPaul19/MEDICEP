@@ -1,0 +1,61 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom/
+.buildlog/
+.history
+.svn/
+migrate.working_copy
+
+# IntelliJ related
+*.iml
+*.ipr
+*.iws
+.idea/
+
+# The .vscode folder contains launch.json and tasks.json which are often
+# preferred to be committed. However, settings.json and extensions.json
+# can contain personal settings and should be ignored.
+.vscode/settings.json
+.vscode/extensions.json
+.vscode/launch.json
+
+# Flutter/Dart related
+**/doc/api/
+**/ios/Flutter/.last_build_id
+**/ios/Flutter/App.framework
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/flutter_export_environment.sh
+**/ios/ServiceDefinitions.json
+**/ios/Runner/GeneratedPluginRegistrant.[mh]
+**/android/Flutter/generated.gradle
+**/android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
+**/android/local.properties
+**/android/App.iml
+**/android/app/App.iml
+**/android/app/src/main/res/drawable-*/ic_launcher.png
+**/build/
+**.flutter-plugins
+**.flutter-plugins-dependencies
+**.packages
+**.dart_tool/
+.pub-cache/
+.pub/
+**/pubspec-lock.yaml
+
+# Node.js related
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Firebase related
+.firebase/
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
