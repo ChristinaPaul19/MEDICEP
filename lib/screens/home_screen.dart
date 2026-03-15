@@ -5,65 +5,9 @@ import '../services/database_service.dart';
 import '../models/medicine.dart';
 import '../models/dose_log.dart';
 import '../models/user_profile.dart';
+import '../models/medicine_dose.dart';
+import '../models/time_slot.dart';
 import '../main.dart';
-
-// =============================================================
-// Medicep — Home Screen (Elderly Mode)
-// =============================================================
-// Design principles:
-//   • Min touch target: 56dp
-//   • Min font: 20sp body, 28sp headers
-//   • Max 2 actions per screen
-//   • WCAG AAA contrast (≥7:1)
-//   • Voice readout on screen enter
-// =============================================================
-
-/// Data model for a single medicine dose
-class MedicineDose {
-  final String name;
-  final String dosage;
-  final String color;
-  final bool taken;
-  final DateTime? takenAt;
-
-  const MedicineDose({
-    required this.name,
-    required this.dosage,
-    this.color = '#FFFFFF',
-    this.taken = false,
-    this.takenAt,
-  });
-
-  MedicineDose copyWith({bool? taken, DateTime? takenAt}) {
-    return MedicineDose(
-      name: name,
-      dosage: dosage,
-      color: color,
-      taken: taken ?? this.taken,
-      takenAt: takenAt ?? this.takenAt,
-    );
-  }
-}
-
-/// Data model for a time slot (morning/afternoon/night)
-class TimeSlot {
-  final String label;
-  final IconData icon;
-  final TimeOfDay time;
-  final List<MedicineDose> medicines;
-  final Color accentColor;
-
-  const TimeSlot({
-    required this.label,
-    required this.icon,
-    required this.time,
-    required this.medicines,
-    required this.accentColor,
-  });
-
-  bool get allTaken => medicines.every((m) => m.taken);
-  int get takenCount => medicines.where((m) => m.taken).length;
-}
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -133,27 +77,29 @@ class _HomeScreenState extends State<HomeScreen>
     ));
   }
 
-  List<TimeSlot> _mapMedicinesToSlots(List<Medicine> medicines) {
-    // Basic slot mapping logic for demo:
-    // Split medicines into Morning (before 12), Afternoon (12-17), Night (after 17)
+  List<TimeSlot> _mapMedicinesToSlots(List<Medicine> medicines, List<DoseLog> logs) {
     final morningMeds = <MedicineDose>[];
     final afternoonMeds = <MedicineDose>[];
     final nightMeds = <MedicineDose>[];
 
     for (var med in medicines) {
+      final isTaken = logs.any((log) => log.medId == med.id);
+      final takenAt = isTaken ? logs.firstWhere((log) => log.medId == med.id).timestamp : null;
+
       final dose = MedicineDose(
+        medId: med.id,
         name: med.name,
         dosage: med.dosage,
         color: med.color,
-        taken: false, // In reality, check DoseLogs
+        taken: isTaken,
+        takenAt: takenAt,
       );
 
-      // Simple heuristic based on first time entry
-      if (med.times.isNotEmpty) {
-        final timeStr = med.times.first.toUpperCase();
-        if (timeStr.contains('AM')) {
+      // Map to slots based on med.times
+      for (var timeStr in med.times) {
+        if (timeStr.toUpperCase().contains('AM')) {
           morningMeds.add(dose);
-        } else if (timeStr.contains('PM')) {
+        } else if (timeStr.toUpperCase().contains('PM')) {
           final hour = int.tryParse(timeStr.split(':').first) ?? 0;
           if (hour < 5 || hour == 12) {
             afternoonMeds.add(dose);
@@ -187,6 +133,33 @@ class _HomeScreenState extends State<HomeScreen>
         medicines: nightMeds,
       ),
     ];
+  }
+
+  Future<void> _toggleDose(MedicineDose dose) async {
+    if (dose.taken) return; // For now, only allow marking as taken
+
+    HapticFeedback.mediumImpact();
+    
+    final uid = isFirebaseInitialized ? (FirebaseAuth.instance.currentUser?.uid ?? '') : 'demo-uid';
+    final log = DoseLog(
+      id: '',
+      medId: dose.medId ?? '',
+      medName: dose.name,
+      timestamp: DateTime.now(),
+      status: 'taken',
+    );
+
+    await DatabaseService(uid).logDose(log);
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Marked ${dose.name} as taken!'),
+          backgroundColor: const Color(0xFF238636),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
@@ -223,6 +196,9 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Color _hexToColor(String hex) {
+    if (hex.startsWith('0xFF')) {
+      return Color(int.parse(hex));
+    }
     hex = hex.replaceFirst('#', '');
     if (hex.length == 6) hex = 'FF$hex';
     return Color(int.parse(hex, radix: 16));
@@ -250,22 +226,27 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    final uid = isFirebaseInitialized ? (FirebaseAuth.instance.currentUser?.uid ?? '') : 'demo-uid';
+    
     return StreamBuilder<UserProfile?>(
-      stream: DatabaseService(isFirebaseInitialized ? (FirebaseAuth.instance.currentUser?.uid ?? '') : 'demo-uid').getProfile().asStream(),
+      stream: DatabaseService(uid).getProfile().asStream(),
       builder: (context, profileSnap) {
         final profileName = profileSnap.data?.name ?? 'Kamala';
         
         return StreamBuilder<List<Medicine>>(
-          stream: DatabaseService(isFirebaseInitialized ? (FirebaseAuth.instance.currentUser?.uid ?? '') : 'demo-uid').medicinesStream,
-          builder: (context, snapshot) {
-            if (snapshot.hasData) {
-              timeSlots = _mapMedicinesToSlots(snapshot.data!);
-            }
+          stream: DatabaseService(uid).medicinesStream,
+          builder: (context, medSnapshot) {
+            return StreamBuilder<List<DoseLog>>(
+              stream: DatabaseService(uid).todayLogsStream,
+              builder: (context, logSnapshot) {
+                if (medSnapshot.hasData && logSnapshot.hasData) {
+                  timeSlots = _mapMedicinesToSlots(medSnapshot.data!, logSnapshot.data!);
+                }
 
-            final totalDoses =
-                timeSlots.fold<int>(0, (sum, s) => sum + s.medicines.length);
-            final takenDoses =
-                timeSlots.fold<int>(0, (sum, s) => sum + s.takenCount);
+                final totalDoses =
+                    timeSlots.fold<int>(0, (sum, s) => sum + s.medicines.length);
+                final takenDoses =
+                    timeSlots.fold<int>(0, (sum, s) => sum + s.takenCount);
 
             return Scaffold(
               backgroundColor: const Color(0xFF0D1117),
@@ -314,23 +295,35 @@ class _HomeScreenState extends State<HomeScreen>
                     ),
 
                     // ── Time Slot Cards ──
-                    SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 16),
-                              child: _buildTimeSlotCard(timeSlots[index], index),
-                            );
-                          },
-                          childCount: timeSlots.length,
+                    if (timeSlots.isEmpty)
+                      const SliverFillRemaining(
+                        child: Center(
+                          child: Text(
+                            'No medications scheduled for today.',
+                            style: TextStyle(color: Color(0xFF8B949E), fontSize: 18),
+                          ),
+                        ),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: _buildTimeSlotCard(timeSlots[index], index),
+                              );
+                            },
+                            childCount: timeSlots.length,
+                          ),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
+                );
+              },
             );
           },
         );
@@ -341,7 +334,7 @@ class _HomeScreenState extends State<HomeScreen>
   /// Top progress card showing today's adherence
   Widget _buildProgressCard(int taken, int total) {
     final percentage = total > 0 ? (taken / total * 100).round() : 0;
-    final allDone = taken == total;
+    final allDone = total > 0 && taken == total;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -356,7 +349,7 @@ class _HomeScreenState extends State<HomeScreen>
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: allDone
-              ? const Color(0xFF4CAF50).withValues(alpha: 0.3)
+              ? const Color(0xFF4CAF50).withOpacity(0.3)
               : const Color(0xFF30363D),
         ),
       ),
@@ -436,6 +429,8 @@ class _HomeScreenState extends State<HomeScreen>
 
   /// Individual time slot card
   Widget _buildTimeSlotCard(TimeSlot slot, int slotIndex) {
+    if (slot.medicines.isEmpty) return const SizedBox.shrink();
+    
     final isCurrent = _isCurrentSlot(slot);
     final isPast = slot.allTaken;
 
@@ -454,14 +449,14 @@ class _HomeScreenState extends State<HomeScreen>
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isCurrent && !isPast
-                ? slot.accentColor.withValues(alpha: 0.5)
+                ? slot.accentColor.withOpacity(0.5)
                 : const Color(0xFF30363D),
             width: isCurrent && !isPast ? 2 : 1,
           ),
           boxShadow: isCurrent && !isPast
               ? [
                   BoxShadow(
-                    color: slot.accentColor.withValues(alpha: 0.1),
+                    color: slot.accentColor.withOpacity(0.1),
                     blurRadius: 20,
                     spreadRadius: 2,
                   )
@@ -476,7 +471,7 @@ class _HomeScreenState extends State<HomeScreen>
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: slot.accentColor.withValues(alpha: 0.15),
+                    color: slot.accentColor.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(slot.icon, color: slot.accentColor, size: 24),
@@ -550,40 +545,7 @@ class _HomeScreenState extends State<HomeScreen>
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: GestureDetector(
-        onTap: () {
-          if (!medicine.taken) {
-            HapticFeedback.heavyImpact();
-            setState(() {
-              final slot = timeSlots[slotIndex];
-              final updatedMeds = List<MedicineDose>.from(slot.medicines);
-              updatedMeds[medIndex] = medicine.copyWith(
-                taken: true,
-                takenAt: DateTime.now(),
-              );
-              timeSlots[slotIndex] = TimeSlot(
-                label: slot.label,
-                icon: slot.icon,
-                time: slot.time,
-                medicines: updatedMeds,
-                accentColor: slot.accentColor,
-              );
-            });
-
-            // Log to Firestore
-            final user = FirebaseAuth.instance.currentUser;
-            if (user != null) {
-              DatabaseService(user.uid).logDose(
-                DoseLog(
-                  id: '',
-                  medId: 'dynamic_id', // Would come from real model mapping
-                  medName: medicine.name,
-                  timestamp: DateTime.now(),
-                  status: 'taken',
-                ),
-              );
-            }
-          }
-        },
+        onTap: () => _toggleDose(medicine),
         child: Semantics(
           label:
               '${medicine.name} ${medicine.dosage}, ${medicine.taken ? "taken" : "pending"}. Tap to mark as taken.',
@@ -636,7 +598,7 @@ class _HomeScreenState extends State<HomeScreen>
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: medicine.taken
-                        ? const Color(0xFF4CAF50).withValues(alpha: 0.3)
+                        ? const Color(0xFF4CAF50).withOpacity(0.3)
                         : const Color(0xFF30363D),
                   ),
                 ),

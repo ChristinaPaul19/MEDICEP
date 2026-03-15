@@ -10,7 +10,9 @@ import 'screens/login_screen.dart';
 import 'screens/profile_setup_screen.dart';
 import 'services/auth_service.dart';
 import 'services/database_service.dart';
+import 'services/notification_service.dart';
 import 'models/user_profile.dart';
+import 'models/dose_log.dart';
 
 bool isFirebaseInitialized = false;
 
@@ -21,21 +23,17 @@ void main() async {
   try {
     await Firebase.initializeApp();
     isFirebaseInitialized = true;
+    
+    // Enable offline persistence
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+    
+    await NotificationService().init();
   } catch (e) {
     debugPrint('Firebase initialization error: $e');
     debugPrint('Running in DEMO MODE without Firebase connectivity.');
-  }
-
-  // Enable offline persistence if initialized
-  if (isFirebaseInitialized) {
-    try {
-      FirebaseFirestore.instance.settings = const Settings(
-        persistenceEnabled: true,
-        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-      );
-    } catch (e) {
-      debugPrint('Firestore settings error: $e');
-    }
   }
 
   SystemChrome.setSystemUIOverlayStyle(
@@ -67,7 +65,7 @@ class MedicepApp extends StatelessWidget {
           surface: Color(0xFF161B22),
           error: Color(0xFFEF5350),
         ),
-        textTheme: GoogleFonts.interTextTheme(
+        textTheme: GoogleFonts.outfitTextTheme(
           ThemeData.dark().textTheme,
         ),
         appBarTheme: const AppBarTheme(
@@ -247,91 +245,407 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-/// Placeholder — History screen
+/// History screen — shows all dose logs from DatabaseService.logsStream
 class HistoryScreen extends StatelessWidget {
   const HistoryScreen({super.key});
 
+  String _formatTimestamp(DateTime dt) {
+    final hour = dt.hour == 0 ? 12 : (dt.hour > 12 ? dt.hour - 12 : dt.hour);
+    final min = dt.minute.toString().padLeft(2, '0');
+    final period = dt.hour < 12 ? 'AM' : 'PM';
+    final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${dt.day} ${months[dt.month - 1]} — $hour:$min $period';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final uid = isFirebaseInitialized
+        ? (FirebaseAuth.instance.currentUser?.uid ?? '')
+        : 'demo-uid';
+
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
       body: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 100,
-                height: 100,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF161B22),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: const Color(0xFF30363D)),
-                ),
-                child: const Icon(
-                  Icons.history_rounded,
-                  size: 48,
-                  color: Color(0xFF58A6FF),
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 24, 24, 4),
+              child: Text(
                 'Dose History',
                 style: TextStyle(
-                  fontSize: 28,
+                  fontSize: 30,
                   fontWeight: FontWeight.w700,
                   color: Colors.white,
+                  letterSpacing: -0.5,
                 ),
               ),
-              const SizedBox(height: 12),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 48),
-                child: Text(
-                  'Your weekly medication history will appear here once you start tracking.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Color(0xFF8B949E),
-                    height: 1.5,
-                  ),
-                ),
+            ),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 0, 24, 20),
+              child: Text(
+                'Your medication log',
+                style: TextStyle(fontSize: 16, color: Color(0xFF8B949E)),
               ),
-            ],
-          ),
+            ),
+            // Log list
+            Expanded(
+              child: StreamBuilder<List<DoseLog>>(
+                stream: DatabaseService(uid).logsStream,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(color: Color(0xFF58A6FF)),
+                    );
+                  }
+
+                  final logs = snapshot.data ?? [];
+
+                  if (logs.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: 90,
+                            height: 90,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF161B22),
+                              borderRadius: BorderRadius.circular(22),
+                              border: Border.all(color: const Color(0xFF30363D)),
+                            ),
+                            child: const Icon(Icons.history_rounded,
+                                size: 44, color: Color(0xFF58A6FF)),
+                          ),
+                          const SizedBox(height: 20),
+                          const Text(
+                            'No doses logged yet',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 48),
+                            child: Text(
+                              'Mark a medicine as taken on the Home screen and it will appear here.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Color(0xFF8B949E),
+                                height: 1.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
+                    itemCount: logs.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    itemBuilder: (context, index) {
+                      final log = logs[index];
+                      final isTaken = log.status == 'taken';
+                      return Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF161B22),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isTaken
+                                ? const Color(0xFF4CAF50).withOpacity(0.3)
+                                : const Color(0xFF30363D),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: isTaken
+                                    ? const Color(0xFF1B5E20)
+                                    : const Color(0xFF1A1F2E),
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(
+                                isTaken
+                                    ? Icons.check_circle_rounded
+                                    : Icons.cancel_rounded,
+                                color: isTaken
+                                    ? const Color(0xFF4CAF50)
+                                    : const Color(0xFFEF5350),
+                                size: 26,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    log.medName,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    _formatTimestamp(log.timestamp),
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      color: Color(0xFF8B949E),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: isTaken
+                                    ? const Color(0xFF1B5E20)
+                                    : const Color(0xFF1A1F2E),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: Text(
+                                isTaken ? '✅ Taken' : '❌ Missed',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: isTaken
+                                      ? const Color(0xFF4CAF50)
+                                      : const Color(0xFFEF5350),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-/// Placeholder — Help / SOS screen
-class HelpScreen extends StatelessWidget {
+/// SOS + Settings screen with interactive Language and Volume controls
+class HelpScreen extends StatefulWidget {
   const HelpScreen({super.key});
+
+  @override
+  State<HelpScreen> createState() => _HelpScreenState();
+}
+
+class _HelpScreenState extends State<HelpScreen> {
+  String _language = 'English';
+  String _volume = 'High';
+
+  static const _languages = ['English', 'Hindi', 'Tamil'];
+  static const _volumes = ['Low', 'Medium', 'High'];
+
+  void _pickLanguage() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.language_rounded, color: Color(0xFF58A6FF)),
+            SizedBox(width: 12),
+            Text('Select Language',
+                style: TextStyle(color: Colors.white, fontSize: 20)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _languages.map((lang) {
+            final isSelected = lang == _language;
+            return GestureDetector(
+              onTap: () {
+                setState(() => _language = lang);
+                Navigator.pop(ctx);
+              },
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? const Color(0xFF58A6FF).withOpacity(0.15)
+                      : const Color(0xFF0D1117),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isSelected
+                        ? const Color(0xFF58A6FF)
+                        : const Color(0xFF30363D),
+                    width: isSelected ? 2 : 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        lang,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w400,
+                          color: isSelected
+                              ? const Color(0xFF58A6FF)
+                              : Colors.white,
+                        ),
+                      ),
+                    ),
+                    if (isSelected)
+                      const Icon(Icons.check_rounded,
+                          color: Color(0xFF58A6FF), size: 22),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  void _pickVolume() {
+    // Store a local temp value inside the dialog.
+    double currentValue = _volumes.indexOf(_volume).toDouble();
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) {
+          final labels = ['Low', 'Medium', 'High'];
+          final icons = [
+            Icons.volume_mute_rounded,
+            Icons.volume_down_rounded,
+            Icons.volume_up_rounded,
+          ];
+          final colors = [
+            const Color(0xFF42A5F5),
+            const Color(0xFFFFA726),
+            const Color(0xFFEF5350),
+          ];
+          return AlertDialog(
+            backgroundColor: const Color(0xFF161B22),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: const Row(
+              children: [
+                Icon(Icons.volume_up_rounded, color: Color(0xFFFFA726)),
+                SizedBox(width: 12),
+                Text('Alert Volume',
+                    style: TextStyle(color: Colors.white, fontSize: 20)),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 8),
+                Icon(icons[currentValue.round()],
+                    color: colors[currentValue.round()], size: 48),
+                const SizedBox(height: 12),
+                Text(
+                  labels[currentValue.round()],
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: colors[currentValue.round()],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SliderTheme(
+                  data: SliderTheme.of(ctx).copyWith(
+                    activeTrackColor: colors[currentValue.round()],
+                    thumbColor: colors[currentValue.round()],
+                    inactiveTrackColor: const Color(0xFF30363D),
+                    trackHeight: 6,
+                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
+                  ),
+                  child: Slider(
+                    value: currentValue,
+                    min: 0,
+                    max: 2,
+                    divisions: 2,
+                    onChanged: (v) =>
+                        setDialogState(() => currentValue = v),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: labels
+                      .map((l) => Text(l,
+                          style: const TextStyle(
+                              fontSize: 13, color: Color(0xFF8B949E))))
+                      .toList(),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel',
+                    style: TextStyle(color: Color(0xFF8B949E))),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  setState(() => _volume = labels[currentValue.round()]);
+                  Navigator.pop(ctx);
+                },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF238636)),
+                child: const Text('Apply'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              const SizedBox(height: 32),
               // SOS Button
               GestureDetector(
                 onLongPress: () {
                   HapticFeedback.heavyImpact();
-                  
-                  // Wrap in FutureBuilder to get profile for SOS
                   showDialog(
                     context: context,
                     builder: (ctx) => FutureBuilder<UserProfile?>(
-                      future: DatabaseService(isFirebaseInitialized ? (FirebaseAuth.instance.currentUser?.uid ?? '') : 'demo-uid').getProfile(),
+                      future: DatabaseService(isFirebaseInitialized
+                              ? (FirebaseAuth.instance.currentUser?.uid ?? '')
+                              : 'demo-uid')
+                          .getProfile(),
                       builder: (context, snapshot) {
-                        final contact = snapshot.data?.emergencyContact ?? 'Emergency Contact';
+                        final contact =
+                            snapshot.data?.emergencyContact ?? 'Emergency Contact';
                         final phone = snapshot.data?.guardianPhone ?? '911';
-
                         return AlertDialog(
                           backgroundColor: const Color(0xFF161B22),
                           shape: RoundedRectangleBorder(
@@ -346,18 +660,19 @@ class HelpScreen extends StatelessWidget {
                           ),
                           content: Text(
                             'This will call $contact ($phone) immediately.',
-                            style: const TextStyle(color: Color(0xFF8B949E), fontSize: 16),
+                            style: const TextStyle(
+                                color: Color(0xFF8B949E), fontSize: 16),
                           ),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx),
                               child: const Text('Cancel',
-                                  style: TextStyle(color: Color(0xFF8B949E))),
+                                  style:
+                                      TextStyle(color: Color(0xFF8B949E))),
                             ),
                             ElevatedButton(
                               onPressed: () {
                                 Navigator.pop(ctx);
-                                // TODO: Trigger SOS call (e.g. url_launcher)
                                 debugPrint('Calling $phone...');
                               },
                               style: ElevatedButton.styleFrom(
@@ -366,10 +681,9 @@ class HelpScreen extends StatelessWidget {
                             ),
                           ],
                         );
-                      }
+                      },
                     ),
                   );
-
                 },
                 child: Container(
                   width: 160,
@@ -390,8 +704,7 @@ class HelpScreen extends StatelessWidget {
                   child: const Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.emergency_rounded,
-                          size: 52, color: Colors.white),
+                      Icon(Icons.emergency_rounded, size: 52, color: Colors.white),
                       SizedBox(height: 6),
                       Text(
                         'SOS',
@@ -406,37 +719,42 @@ class HelpScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               const Text(
                 'Long press for emergency',
-                style: TextStyle(
-                  fontSize: 18,
-                  color: Color(0xFF8B949E),
-                ),
+                style: TextStyle(fontSize: 18, color: Color(0xFF8B949E)),
               ),
               const SizedBox(height: 48),
 
-              // Settings quick links
+              // Language tile — tappable
               _buildSettingsTile(
-                Icons.language_rounded,
-                'Language',
-                'Hindi',
-                const Color(0xFF58A6FF),
+                icon: Icons.language_rounded,
+                title: 'Language',
+                value: _language,
+                color: const Color(0xFF58A6FF),
+                onTap: _pickLanguage,
               ),
               const SizedBox(height: 12),
+
+              // Volume tile — tappable
               _buildSettingsTile(
-                Icons.volume_up_rounded,
-                'Alert Volume',
-                'High',
-                const Color(0xFFFFA726),
+                icon: Icons.volume_up_rounded,
+                title: 'Alert Volume',
+                value: _volume,
+                color: const Color(0xFFFFA726),
+                onTap: _pickVolume,
               ),
               const SizedBox(height: 12),
+
+              // Bluetooth tile (static for now)
               _buildSettingsTile(
-                Icons.bluetooth_rounded,
-                'MedicepBox',
-                'Connected',
-                const Color(0xFF4CAF50),
+                icon: Icons.bluetooth_rounded,
+                title: 'MedicepBox',
+                value: 'Connected',
+                color: const Color(0xFF4CAF50),
+                onTap: null,
               ),
+              const SizedBox(height: 32),
             ],
           ),
         ),
@@ -444,48 +762,67 @@ class HelpScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSettingsTile(
-      IconData icon, String title, String value, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF30363D)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, color: color, size: 24),
+  Widget _buildSettingsTile({
+    required IconData icon,
+    required String title,
+    required String value,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161B22),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: onTap != null
+                ? const Color(0xFF30363D)
+                : const Color(0xFF30363D),
           ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
-                color: Colors.white,
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(icon, color: color, size: 24),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                ),
               ),
             ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              color: color,
-              fontWeight: FontWeight.w500,
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                color: color,
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          const Icon(Icons.chevron_right_rounded,
-              color: Color(0xFF8B949E), size: 24),
-        ],
+            const SizedBox(width: 8),
+            Icon(
+              onTap != null
+                  ? Icons.chevron_right_rounded
+                  : Icons.check_circle_rounded,
+              color: onTap != null
+                  ? const Color(0xFF8B949E)
+                  : color,
+              size: 24,
+            ),
+          ],
+        ),
       ),
     );
   }

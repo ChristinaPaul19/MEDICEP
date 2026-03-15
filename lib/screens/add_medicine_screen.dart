@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:medicep/services/notification_service.dart';
 import '../services/database_service.dart';
 import '../models/medicine.dart';
 import '../main.dart';
@@ -217,11 +218,39 @@ class _AddMedicineScreenState extends State<AddMedicineScreen>
 
     try {
       // 2. Save to Firestore (Sub-collection)
-      await DatabaseService(uid).addMedicine(med);
+      final medRef = await DatabaseService(uid).addMedicine(med);
       
-      // 3. (Keep existing animations and BLE simulation)
+      // 3. Schedule Notifications for each time slot
+      final notificationService = NotificationService();
+      for (int i = 0; i < _timeSlots.length; i++) {
+        final time = _timeSlots[i];
+        final now = DateTime.now();
+        var scheduledDate = DateTime(
+          now.year,
+          now.month,
+          now.day,
+          time.hour,
+          time.minute,
+        );
+        
+        // If the time has already passed today, schedule for tomorrow
+        if (scheduledDate.isBefore(now)) {
+          scheduledDate = scheduledDate.add(const Duration(days: 1));
+        }
+
+        // Generate a unique ID for this specific notification (med hash + index)
+        final notificationId = (med.name.hashCode.abs() + i);
+
+        await notificationService.scheduleNotification(
+          id: notificationId,
+          title: 'Medication Reminder: ${med.name}',
+          body: 'It\'s time to take your ${med.dosage} dose of ${med.name}.',
+          scheduledTime: scheduledDate,
+        );
+      }
+      
+      // 4. (Keep existing animations and BLE simulation)
       _saveAnimController.forward();
-      // BLE logic would go here...
     } catch (e) {
       debugPrint('Error saving medicine: $e');
     }
