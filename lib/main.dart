@@ -459,79 +459,166 @@ class _HelpScreenState extends State<HelpScreen> {
   static const _volumes = ['Low', 'Medium', 'High'];
 
   void _pickLanguage() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF161B22),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.language_rounded, color: Color(0xFF58A6FF)),
-            SizedBox(width: 12),
-            Text('Select Language',
-                style: TextStyle(color: Colors.white, fontSize: 20)),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF161B22),
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: const Color(0xFF30363D)),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF58A6FF).withOpacity(0.08),
+              blurRadius: 40,
+              spreadRadius: 4,
+            ),
           ],
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: _languages.map((lang) {
-            final isSelected = lang == _language;
-            return GestureDetector(
-              onTap: () {
-                setState(() => _language = lang);
-                Navigator.pop(ctx);
-              },
-              child: Container(
-                margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? const Color(0xFF58A6FF).withOpacity(0.15)
-                      : const Color(0xFF0D1117),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: isSelected
-                        ? const Color(0xFF58A6FF)
-                        : const Color(0xFF30363D),
-                    width: isSelected ? 2 : 1,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // drag handle
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  margin: const EdgeInsets.only(bottom: 20),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF30363D),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        lang,
+              ),
+              // header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF1A3A5C), Color(0xFF0D2137)],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(Icons.language_rounded,
+                        color: Color(0xFF58A6FF), size: 22),
+                  ),
+                  const SizedBox(width: 14),
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Language',
                         style: TextStyle(
                           fontSize: 18,
-                          fontWeight: isSelected
-                              ? FontWeight.w600
-                              : FontWeight.w400,
-                          color: isSelected
-                              ? const Color(0xFF58A6FF)
-                              : Colors.white,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
                         ),
                       ),
-                    ),
-                    if (isSelected)
-                      const Icon(Icons.check_rounded,
-                          color: Color(0xFF58A6FF), size: 22),
-                  ],
-                ),
+                      Text(
+                        'Select your preferred language',
+                        style: TextStyle(
+                            fontSize: 12, color: Color(0xFF8B949E)),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-            );
-          }).toList(),
+              const SizedBox(height: 24),
+              // language options
+              ...[
+                ('🇬🇧', 'English', 'A', const Color(0xFF58A6FF)),
+                ('🇮🇳', 'Hindi', 'अ', const Color(0xFFFFA726)),
+                ('🇮🇳', 'Tamil', 'அ', const Color(0xFF66BB6A)),
+              ].map((item) {
+                final flag = item.$1;
+                final lang = item.$2;
+                final sample = item.$3;
+                final col = item.$4 as Color;
+                final isSelected = _language == lang;
+                return GestureDetector(
+                  onTap: () {
+                    setState(() => _language = lang);
+                    Navigator.pop(ctx);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? col.withOpacity(0.12)
+                          : const Color(0xFF0D1117),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color:
+                            isSelected ? col : const Color(0xFF30363D),
+                        width: isSelected ? 1.5 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Text(flag, style: const TextStyle(fontSize: 22)),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Text(
+                            lang,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: isSelected ? col : Colors.white,
+                            ),
+                          ),
+                        ),
+                        Container(
+                          width: 34,
+                          height: 34,
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? col.withOpacity(0.2)
+                                : const Color(0xFF1A1F2E),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Center(
+                            child: isSelected
+                                ? Icon(Icons.check_rounded,
+                                    color: col, size: 18)
+                                : Text(
+                                    sample,
+                                    style: const TextStyle(
+                                        fontSize: 16,
+                                        color: Color(0xFF8B949E)),
+                                  ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }),
+            ],
+          ),
         ),
       ),
     );
   }
 
   void _pickVolume() {
-    // Store a local temp value inside the dialog.
-    double currentValue = _volumes.indexOf(_volume).toDouble();
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
+        builder: (ctx, setSheetState) {
+          final int idx = _volumes.indexOf(_volume);
           final labels = ['Low', 'Medium', 'High'];
           final icons = [
             Icons.volume_mute_rounded,
@@ -543,77 +630,163 @@ class _HelpScreenState extends State<HelpScreen> {
             const Color(0xFFFFA726),
             const Color(0xFFEF5350),
           ];
-          return AlertDialog(
-            backgroundColor: const Color(0xFF161B22),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Row(
-              children: [
-                Icon(Icons.volume_up_rounded, color: Color(0xFFFFA726)),
-                SizedBox(width: 12),
-                Text('Alert Volume',
-                    style: TextStyle(color: Colors.white, fontSize: 20)),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SizedBox(height: 8),
-                Icon(icons[currentValue.round()],
-                    color: colors[currentValue.round()], size: 48),
-                const SizedBox(height: 12),
-                Text(
-                  labels[currentValue.round()],
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w700,
-                    color: colors[currentValue.round()],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SliderTheme(
-                  data: SliderTheme.of(ctx).copyWith(
-                    activeTrackColor: colors[currentValue.round()],
-                    thumbColor: colors[currentValue.round()],
-                    inactiveTrackColor: const Color(0xFF30363D),
-                    trackHeight: 6,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 12),
-                  ),
-                  child: Slider(
-                    value: currentValue,
-                    min: 0,
-                    max: 2,
-                    divisions: 2,
-                    onChanged: (v) =>
-                        setDialogState(() => currentValue = v),
-                  ),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: labels
-                      .map((l) => Text(l,
-                          style: const TextStyle(
-                              fontSize: 13, color: Color(0xFF8B949E))))
-                      .toList(),
+
+          return Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 20),
+            decoration: BoxDecoration(
+              color: const Color(0xFF161B22),
+              borderRadius: BorderRadius.circular(28),
+              border: Border.all(color: const Color(0xFF30363D)),
+              boxShadow: [
+                BoxShadow(
+                  color: colors[idx].withOpacity(0.1),
+                  blurRadius: 40,
+                  spreadRadius: 4,
                 ),
               ],
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel',
-                    style: TextStyle(color: Color(0xFF8B949E))),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // drag handle
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF30363D),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  // header
+                  Row(
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: colors[idx].withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(icons[idx],
+                            color: colors[idx], size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Alert Volume',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            labels[idx],
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: colors[idx],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  // segmented bar — 3 tap targets
+                  Container(
+                    height: 56,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D1117),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFF30363D)),
+                    ),
+                    child: Row(
+                      children: List.generate(3, (i) {
+                        final isActive = idx == i;
+                        return Expanded(
+                          child: GestureDetector(
+                            onTap: () => setSheetState(() {
+                              setState(() => _volume = labels[i]);
+                            }),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              margin: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: isActive
+                                    ? colors[i].withOpacity(0.2)
+                                    : Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                                border: isActive
+                                    ? Border.all(
+                                        color: colors[i].withOpacity(0.6),
+                                        width: 1.5,
+                                      )
+                                    : null,
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    icons[i],
+                                    color: isActive
+                                        ? colors[i]
+                                        : const Color(0xFF8B949E),
+                                    size: 20,
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    labels[i],
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: isActive
+                                          ? FontWeight.w700
+                                          : FontWeight.w400,
+                                      color: isActive
+                                          ? colors[i]
+                                          : const Color(0xFF8B949E),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  // apply button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: colors[idx],
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
+                      child: const Text(
+                        'Apply',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              ElevatedButton(
-                onPressed: () {
-                  setState(() => _volume = labels[currentValue.round()]);
-                  Navigator.pop(ctx);
-                },
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF238636)),
-                child: const Text('Apply'),
-              ),
-            ],
+            ),
           );
         },
       ),

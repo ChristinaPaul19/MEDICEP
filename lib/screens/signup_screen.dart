@@ -1,32 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; 
 import '../services/auth_service.dart';
-import 'signup_screen.dart';
+import 'login_screen.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class SignUpScreen extends StatefulWidget {
+  const SignUpScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _SignUpScreenState extends State<SignUpScreen> {
   final AuthService _auth = AuthService();
   final _formKey = GlobalKey<FormState>();
-  
+
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  
+  final TextEditingController _confirmPasswordController = TextEditingController();
+
   bool _isLoading = false;
   bool _isPasswordVisible = false;
 
-  Future<void> _handleLogin() async {
+  Future<void> _handleSignUp() async {
     if (!_formKey.currentState!.validate()) return;
-    
+
     setState(() => _isLoading = true);
     try {
-      await _auth.signInWithEmail(
+      await _auth.signUpWithEmail(
         _emailController.text.trim(),
         _passwordController.text,
       );
@@ -35,7 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Login Failed: ${e.toString().split(']').last.trim()}'),
+            content: Text('Registration Failed: ${e.toString().split(']').last.trim()}'),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ),
@@ -50,6 +49,14 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D1117),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -60,17 +67,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Hero(
-                    tag: 'logo',
-                    child: Icon(
-                      Icons.medication_rounded,
-                      size: 100,
-                      color: Color(0xFF58A6FF),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
                   const Text(
-                    'Welcome Back',
+                    'Create Account',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 32,
@@ -81,7 +79,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Sign in to your Medicep account',
+                    'Join Medicep and never miss a dose',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 16,
@@ -89,7 +87,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 48),
-                  
+
                   // Email Field
                   TextFormField(
                     controller: _emailController,
@@ -105,7 +103,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                   ),
                   const SizedBox(height: 20),
-                  
+
                   // Password Field
                   TextFormField(
                     controller: _passwordController,
@@ -121,29 +119,28 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                     validator: (value) {
-                      if (value == null || value.isEmpty) return 'Please enter your password';
+                      if (value == null || value.isEmpty) return 'Please enter a password';
                       if (value.length < 6) return 'Password must be at least 6 characters';
                       return null;
                     },
                   ),
-                  const SizedBox(height: 12),
-                  
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () {
-                        // Handle forgot password
-                      },
-                      child: const Text(
-                        'Forgot Password?',
-                        style: TextStyle(color: Color(0xFF58A6FF)),
-                      ),
-                    ),
+                  const SizedBox(height: 20),
+
+                  // Confirm Password Field
+                  TextFormField(
+                    controller: _confirmPasswordController,
+                    obscureText: true,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: _inputDecoration('Confirm Password', Icons.lock_reset_rounded),
+                    validator: (value) {
+                      if (value != _passwordController.text) return 'Passwords do not match';
+                      return null;
+                    },
                   ),
-                  const SizedBox(height: 32),
-                  
+                  const SizedBox(height: 40),
+
                   ElevatedButton(
-                    onPressed: _isLoading ? null : _handleLogin,
+                    onPressed: _isLoading ? null : _handleSignUp,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF238636),
                       foregroundColor: Colors.white,
@@ -151,35 +148,30 @@ class _LoginScreenState extends State<LoginScreen> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 0,
                     ),
-                    child: _isLoading 
-                      ? const SizedBox(
-                          width: 24, 
-                          height: 24, 
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                        )
-                      : const Text(
-                          'Sign In',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
+                        : const Text(
+                            'Create Account',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          ),
                   ),
                   const SizedBox(height: 24),
-                  
+
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const Text(
-                        "Don't have an account? ",
+                        "Already have an account? ",
                         style: TextStyle(color: Color(0xFF8B949E)),
                       ),
                       TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const SignUpScreen()),
-                          );
-                        },
+                        onPressed: () => Navigator.pop(context),
                         child: const Text(
-                          'Create one',
+                          'Sign In',
                           style: TextStyle(
                             color: Color(0xFF58A6FF),
                             fontWeight: FontWeight.bold,

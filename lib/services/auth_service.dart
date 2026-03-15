@@ -24,6 +24,47 @@ class AuthService extends ChangeNotifier {
     return _auth.authStateChanges();
   }
 
+  // --- Email/Password Auth ---
+
+  // Sign up with Email
+  Future<UserCredential?> signUpWithEmail(String email, String password) async {
+    if (!isFirebaseInitialized) {
+      debugPrint('MOCK: Signing up with $email');
+      await Future.delayed(const Duration(seconds: 1));
+      _isMockLoggedIn = true;
+      notifyListeners();
+      return null;
+    }
+    final cred = await _auth.createUserWithEmailAndPassword(email: email, password: password);
+    notifyListeners();
+    return cred;
+  }
+
+  // Sign in with Email
+  Future<UserCredential?> signInWithEmail(String email, String password) async {
+    if (!isFirebaseInitialized) {
+      debugPrint('MOCK: Signing in with $email');
+      await Future.delayed(const Duration(seconds: 1));
+      _isMockLoggedIn = true;
+      notifyListeners();
+      return null;
+    }
+    final cred = await _auth.signInWithEmailAndPassword(email: email, password: password);
+    notifyListeners();
+    return cred;
+  }
+
+  // Password Reset
+  Future<void> sendPasswordResetEmail(String email) async {
+    if (!isFirebaseInitialized) {
+      debugPrint('MOCK: Sending password reset to $email');
+      return;
+    }
+    await _auth.sendPasswordResetEmail(email: email);
+  }
+
+  // --- Legacy Phone/OTP (Keep for compatibility if needed) ---
+  
   // Step 1: Send OTP
   Future<void> sendOTP(String phoneNumber, Function(String) codeSent) async {
     if (!isFirebaseInitialized) {
@@ -32,19 +73,15 @@ class AuthService extends ChangeNotifier {
       codeSent('mock-auth-id');
       return;
     }
-    try {
-      await _auth.verifyPhoneNumber(
-        phoneNumber: phoneNumber,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          await _auth.signInWithCredential(credential);
-        },
-        verificationFailed: (FirebaseAuthException e) => debugPrint(e.message),
-        codeSent: (String vid, int? resendToken) => codeSent(vid),
-        codeAutoRetrievalTimeout: (String vid) {},
-      );
-    } catch (e) {
-      debugPrint('Error sending OTP: $e');
-    }
+    await _auth.verifyPhoneNumber(
+      phoneNumber: phoneNumber,
+      verificationCompleted: (PhoneAuthCredential credential) async {
+        await _auth.signInWithCredential(credential);
+      },
+      verificationFailed: (FirebaseAuthException e) => debugPrint(e.message),
+      codeSent: (String vid, int? resendToken) => codeSent(vid),
+      codeAutoRetrievalTimeout: (String vid) {},
+    );
   }
 
   // Step 2: Verify OTP
@@ -61,7 +98,7 @@ class AuthService extends ChangeNotifier {
       smsCode: code,
     );
     final cred = await _auth.signInWithCredential(credential);
-    notifyListeners(); // Also notify for real auth
+    notifyListeners();
     return cred;
   }
 
