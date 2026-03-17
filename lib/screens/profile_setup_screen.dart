@@ -17,6 +17,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   final TextEditingController _conditionsController = TextEditingController();
   final TextEditingController _emergencyContactController = TextEditingController();
   final TextEditingController _guardianPhoneController = TextEditingController();
+  final TextEditingController _snoozeController = TextEditingController(text: '5');
+  final TextEditingController _deviceIdController = TextEditingController();
 
   String _gender = 'Male';
   String _bloodGroup = 'O+';
@@ -24,6 +26,51 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   final List<String> _genders = ['Male', 'Female', 'Other'];
   final List<String> _bloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final profile = await DatabaseService(user.uid).getProfile();
+      if (profile != null) {
+        _nameController.text = profile.name;
+        _ageController.text = profile.age > 0 ? profile.age.toString() : '';
+        _conditionsController.text = profile.medicalConditions.join(', ');
+        _emergencyContactController.text = profile.emergencyContact;
+        _guardianPhoneController.text = profile.guardianPhone;
+        _snoozeController.text = profile.snoozeInterval.toString();
+        _deviceIdController.text = profile.deviceId;
+        _gender = profile.gender.isNotEmpty ? profile.gender : 'Male';
+        _bloodGroup = profile.bloodGroup.isNotEmpty ? profile.bloodGroup : 'O+';
+      }
+    } catch (e) {
+      debugPrint('Error loading profile: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _prefillSampleData() {
+    setState(() {
+      _nameController.text = 'Kamala Devi';
+      _ageController.text = '65';
+      _gender = 'Female';
+      _bloodGroup = 'O+';
+      _conditionsController.text = 'Diabetes, Hypertension';
+      _emergencyContactController.text = 'Rajesh (Son)';
+      _guardianPhoneController.text = '9876543210';
+      _snoozeController.text = '10';
+      _deviceIdController.text = 'Device01';
+    });
+  }
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
@@ -40,6 +87,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
           medicalConditions: _conditionsController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
           emergencyContact: _emergencyContactController.text.trim(),
           guardianPhone: _guardianPhoneController.text.trim(),
+          snoozeInterval: int.tryParse(_snoozeController.text) ?? 5,
+          deviceId: _deviceIdController.text.trim(),
         );
 
         await DatabaseService(user.uid).updateProfile(profile);
@@ -133,6 +182,33 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                 const SizedBox(height: 20),
                 
                 _buildTextField('Guardian Phone Number', _guardianPhoneController, Icons.phone_outlined, isNumber: true),
+                const SizedBox(height: 32),
+                
+                const Text(
+                  'Hardware Settings',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                _buildTextField(
+                  'Snooze Interval (Minutes)', 
+                  _snoozeController, 
+                  Icons.snooze_rounded, 
+                  isNumber: true,
+                  hint: 'Default is 5 minutes',
+                ),
+                const SizedBox(height: 20),
+                
+                _buildTextField(
+                  'Device ID (ESP32 UID)', 
+                  _deviceIdController, 
+                  Icons.developer_board_rounded,
+                  hint: 'Enter your Medicep Device ID',
+                ),
                 const SizedBox(height: 48),
                 
                 ElevatedButton(
@@ -155,6 +231,20 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                         style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                       ),
                 ),
+                const SizedBox(height: 16),
+                
+                TextButton.icon(
+                  onPressed: _prefillSampleData,
+                  icon: const Icon(Icons.auto_fix_high_rounded, color: Color(0xFF58A6FF)),
+                  label: const Text(
+                    'Use Sample Data',
+                    style: TextStyle(color: Color(0xFF58A6FF), fontWeight: FontWeight.bold),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                ),
+                
                 const SizedBox(height: 40),
               ],
             ),

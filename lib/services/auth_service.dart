@@ -24,6 +24,20 @@ class AuthService extends ChangeNotifier {
     return _auth.authStateChanges();
   }
 
+  // --- Anonymous Auth (Guest) ---
+  Future<UserCredential?> signInAnonymously() async {
+    if (!isFirebaseInitialized) {
+      debugPrint('MOCK: Signing in anonymously');
+      await Future.delayed(const Duration(seconds: 1));
+      _isMockLoggedIn = true;
+      notifyListeners();
+      return null;
+    }
+    final cred = await _auth.signInAnonymously();
+    notifyListeners();
+    return cred;
+  }
+
   // --- Email/Password Auth ---
 
   // Sign up with Email

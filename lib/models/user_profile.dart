@@ -6,6 +6,8 @@ class UserProfile {
   final List<String> medicalConditions;
   final String emergencyContact;
   final String guardianPhone;
+  final int snoozeInterval; // in minutes
+  final String deviceId;
 
   UserProfile({
     required this.name,
@@ -15,6 +17,8 @@ class UserProfile {
     required this.medicalConditions,
     required this.emergencyContact,
     required this.guardianPhone,
+    this.snoozeInterval = 5,
+    this.deviceId = '',
   });
 
   Map<String, dynamic> toMap() {
@@ -26,6 +30,8 @@ class UserProfile {
       'medicalConditions': medicalConditions,
       'emergencyContact': emergencyContact,
       'guardianPhone': guardianPhone,
+      'snoozeInterval': snoozeInterval,
+      'deviceId': deviceId,
     };
   }
 
@@ -38,6 +44,8 @@ class UserProfile {
       medicalConditions: List<String>.from(map['medicalConditions'] ?? []),
       emergencyContact: map['emergencyContact'] ?? '',
       guardianPhone: map['guardianPhone'] ?? '',
+      snoozeInterval: map['snoozeInterval'] ?? 5,
+      deviceId: map['deviceId'] ?? '',
     );
   }
 }

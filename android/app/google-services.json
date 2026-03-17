@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "21944934644",
+    "project_id": "medisep-a36c1",
+    "storage_bucket": "medisep-a36c1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:21944934644:android:5c46fcf3ff94349f5cfea1",
+        "android_client_info": {
+          "package_name": "com.example.medicep"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBEoQSlcvK-uugv-GhiO_p5BS3WKrOB13I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

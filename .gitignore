@@ -9,6 +9,8 @@
 .history
 .svn/
 migrate.working_copy
+analysis_output.txt
+
 
 # IntelliJ related
 *.iml

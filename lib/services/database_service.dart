@@ -66,6 +66,27 @@ class DatabaseService {
     return UserProfile.fromMap(data['profile']);
   }
 
+  Stream<UserProfile?> get profileStream {
+    if (!isFirebaseInitialized) {
+      // Mock stream for demo mode
+      return Stream.value(UserProfile(
+        name: 'Kamala (Demo)',
+        age: 65,
+        gender: 'Female',
+        bloodGroup: 'O+',
+        emergencyContact: 'Guardian (911)',
+        guardianPhone: '911',
+        medicalConditions: ['Diabetes', 'Hypertension'],
+      ));
+    }
+    return _userDoc.snapshots().map((doc) {
+      if (!doc.exists || doc.data() == null) return null;
+      final data = doc.data() as Map<String, dynamic>;
+      if (!data.containsKey('profile')) return null;
+      return UserProfile.fromMap(data['profile']);
+    });
+  }
+
   // --- Medicine Operations ---
 
   Future<DocumentReference?> addMedicine(Medicine medicine) async {

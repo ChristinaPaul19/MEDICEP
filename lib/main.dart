@@ -13,15 +13,18 @@ import 'services/database_service.dart';
 import 'services/notification_service.dart';
 import 'models/user_profile.dart';
 import 'models/dose_log.dart';
+import 'firebase_options.dart';
 
 bool isFirebaseInitialized = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Firebase (Requires google-services.json / GoogleService-Info.plist)
+  // Initialize Firebase
   try {
-    await Firebase.initializeApp();
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
     isFirebaseInitialized = true;
     
     // Enable offline persistence
@@ -110,8 +113,8 @@ class AuthWrapper extends StatelessWidget {
             
             if (snapshot.hasData || isMocked) {
               final uid = isMocked ? 'demo-uid' : snapshot.data!.uid;
-              return FutureBuilder<UserProfile?>(
-                future: DatabaseService(uid).getProfile(),
+              return StreamBuilder<UserProfile?>(
+                stream: DatabaseService(uid).profileStream,
                 builder: (context, profileSnapshot) {
                   if (profileSnapshot.connectionState == ConnectionState.waiting) {
                     return const Scaffold(
