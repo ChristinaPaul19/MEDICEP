@@ -27,13 +27,14 @@ class AuthService extends ChangeNotifier {
   // --- Anonymous Auth (Guest) ---
   Future<UserCredential?> signInAnonymously() async {
     if (!isFirebaseInitialized) {
-      debugPrint('MOCK: Signing in anonymously');
+      debugPrint('MOCK: Signing in anonymously (Offline/Demo Mode)');
       await Future.delayed(const Duration(seconds: 1));
       _isMockLoggedIn = true;
       notifyListeners();
       return null;
     }
     final cred = await _auth.signInAnonymously();
+    debugPrint('Firebase: Signed in anonymously as ${cred.user?.uid}');
     notifyListeners();
     return cred;
   }
@@ -57,13 +58,14 @@ class AuthService extends ChangeNotifier {
   // Sign in with Email
   Future<UserCredential?> signInWithEmail(String email, String password) async {
     if (!isFirebaseInitialized) {
-      debugPrint('MOCK: Signing in with $email');
+      debugPrint('MOCK: Signing in with $email (Offline/Demo Mode)');
       await Future.delayed(const Duration(seconds: 1));
       _isMockLoggedIn = true;
       notifyListeners();
       return null;
     }
     final cred = await _auth.signInWithEmailAndPassword(email: email, password: password);
+    debugPrint('Firebase: Signed in as ${cred.user?.email}');
     notifyListeners();
     return cred;
   }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/database_service.dart';
 import '../models/medicine.dart';
@@ -21,6 +22,7 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+  Timer? _timer;
 
   // ── Demo data (replace with Isar/BLE data in production) ──
   final String userName = 'Kamala';
@@ -29,6 +31,10 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
 
     timeSlots = [
       TimeSlot(
@@ -166,6 +172,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     _pulseController.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
@@ -203,6 +210,14 @@ class _HomeScreenState extends State<HomeScreen>
     hex = hex.replaceFirst('#', '');
     if (hex.length == 6) hex = 'FF$hex';
     return Color(int.parse(hex, radix: 16));
+  }
+
+  String _formattedLiveTime() {
+    final now = DateTime.now();
+    final hour = now.hour == 0 ? 12 : (now.hour > 12 ? now.hour - 12 : now.hour);
+    final minute = now.minute.toString().padLeft(2, '0');
+    final period = now.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
   }
 
   String _formattedDate() {
@@ -307,11 +322,64 @@ class _HomeScreenState extends State<HomeScreen>
                               ],
                             ),
                             const SizedBox(height: 4),
-                            Text(
-                              _formattedDate(),
-                              style: const TextStyle(
-                                fontSize: 16,
-                                color: Color(0xFF8B949E),
+                            Row(
+                              children: [
+                                const Icon(Icons.calendar_today_rounded, size: 14, color: Color(0xFF8B949E)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _formattedDate(),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Color(0xFF8B949E),
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                const Icon(Icons.access_time_rounded, size: 14, color: Color(0xFF8B949E)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _formattedLiveTime(),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    color: Color(0xFF8B949E),
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            GestureDetector(
+                              onTap: () {
+                                Clipboard.setData(ClipboardData(text: uid));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Device ID (UID) copied to clipboard!'),
+                                    backgroundColor: Color(0xFF238636),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF161B22),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: const Color(0xFF30363D)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.copy_rounded, color: Color(0xFF58A6FF), size: 16),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'UID: $uid',
+                                      style: const TextStyle(
+                                        color: Color(0xFF58A6FF),
+                                        fontSize: 12,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                             const SizedBox(height: 20),

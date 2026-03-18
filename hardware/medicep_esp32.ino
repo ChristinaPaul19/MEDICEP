@@ -4,7 +4,6 @@
  * Libraries: 
  * - Firebase ESP Client (by Mobizt)
  * - LiquidCrystal_I2C
- * - RTClib
  */
 
 #include <WiFi.h>
@@ -13,7 +12,7 @@
 #include <addons/RTDBHelper.h>
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
-#include <RTClib.h>
+#include <time.h>
 
 // --- Configuration ---
 #define WIFI_SSID "YOUR_WIFI_SSID"
@@ -29,7 +28,6 @@
 
 // --- Objects ---
 LiquidCrystal_I2C lcd(0x27, 16, 2);
-RTC_DS3231 rtc;
 FirebaseData fbdo;
 FirebaseAuth auth;
 FirebaseConfig config;
@@ -42,6 +40,13 @@ unsigned long alarmStartTime = 0;
 unsigned long snoozeEndTime = 0;
 int snoozeIntervalMinutes = 5; // Default from app
 bool isSnoozed = false;
+
+// Time sync vars
+const char* ntpServer = "pool.ntp.org";
+const long  gmtOffset_sec = 19800; // GMT+5:30 for India
+const int   daylightOffset_sec = 0;
+unsigned long lastFetchTime = 0;
+const unsigned long fetchInterval = 60000; // Fetch medicines every 60 seconds
 
 struct Medicine {
   String name;
@@ -57,23 +62,29 @@ void setup() {
   pinMode(PIN_BTN_OK, INPUT_PULLUP);
   pinMode(PIN_BTN_SNOOZE, INPUT_PULLUP);
   
+  Wire.begin(21, 22); // Start I2C explicitly for ESP32 (SDA=21, SCL=22)
+  
   // LCD Setup
   lcd.init();
   lcd.backlight();
   lcd.setCursor(0, 0);
   lcd.print("Medicep Starting");
 
-  // RTC Setup
-  if (!rtc.begin()) {
-    Serial.println("Couldn't find RTC");
-    while (1);
-  }
-
   // WiFi Setup
+  lcd.setCursor(0, 1);
+  lcd.print("Connecting WiFi");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  int attempts = 0;
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
+    attempts++;
+    if (attempts > 30) { // 15 seconds
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("WiFi Failed!");
+      while(1); // Stop here if no WiFi
+    }
   }
   Serial.println("\nWiFi Connected");
 
@@ -83,13 +94,33 @@ void setup() {
   Firebase.begin(&config, &auth);
   Firebase.reconnectWiFi(true);
 
+  // Sync time from NTP
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+  struct tm timeinfo;
+  lcd.clear();
+  lcd.print("Syncing Time...");
+  if (getLocalTime(&timeinfo, 10000)) { // wait up to 10 sec
+    Serial.println("Time Synced from NTP");
+  } else {
+    Serial.println("Failed to obtain time");
+  }
+
   fetchProfileSettings();
   fetchMedicines();
 }
 
 void loop() {
-  DateTime now = rtc.now();
-  String currentTimeStr = formatTime(now);
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  String currentTimeStr = formatTime(timeinfo);
+
+  if (millis() - lastFetchTime >= fetchInterval) {
+    lastFetchTime = millis();
+    fetchMedicines();
+  }
 
   if (!isAlarming && !isSnoozed) {
     checkSchedule(currentTimeStr);
@@ -104,7 +135,7 @@ void loop() {
       triggerAlarm(currentMedName, currentDosage);
     }
   } else {
-    updateIdleDisplay(now);
+    updateIdleDisplay(timeinfo);
   }
 
   delay(100);
@@ -112,8 +143,9 @@ void loop() {
 
 void fetchProfileSettings() {
   String path = "users/" + String(USER_UID);
-  if (Firebase.Firestore.getDocument(&fbdo, FIREBASE_PROJECT_ID, "", path.c_str(), "")) {
-    FirebaseJson &json = fbdo.to<FirebaseJson>();
+  if (Firebase.Firestore.getDocument(&fbdo, FIREBASE_PROJECT_ID, "(default)", path.c_str(), "")) {
+    FirebaseJson json;
+    json.setJsonData(fbdo.payload().c_str());
     FirebaseJsonData jsonData;
     if (json.get(jsonData, "fields/profile/mapValue/fields/snoozeInterval/integerValue")) {
       snoozeIntervalMinutes = jsonData.intValue;
@@ -124,19 +156,23 @@ void fetchProfileSettings() {
 
 void fetchMedicines() {
   String path = "users/" + String(USER_UID) + "/medicines";
-  if (Firebase.Firestore.listDocuments(&fbdo, FIREBASE_PROJECT_ID, "", path.c_str(), "")) {
-    FirebaseJson &json = fbdo.to<FirebaseJson>();
+  // listDocuments expects 9 arguments: fbdo, projectId, databaseId, collectionId, pageSize, pageToken, orderBy, mask, showMissing
+  if (Firebase.Firestore.listDocuments(&fbdo, FIREBASE_PROJECT_ID, "(default)", path.c_str(), 0, "", "", "", false)) {
+    FirebaseJson json;
+    json.setJsonData(fbdo.payload().c_str());
     FirebaseJsonData jsonData;
     
     // Get the documents array
     if (json.get(jsonData, "documents")) {
-      FirebaseJsonArray &documents = jsonData.jsonObjPtr->to<FirebaseJsonArray>();
+      FirebaseJsonArray documents;
+      jsonData.getArray(documents);
       medicines.clear();
       
       for (size_t i = 0; i < documents.size(); i++) {
         FirebaseJsonData docData;
         documents.get(docData, i);
-        FirebaseJson &doc = docData.jsonObjPtr->to<FirebaseJson>();
+        FirebaseJson doc;
+        docData.getJSON(doc);
         
         Medicine med;
         if (doc.get(docData, "fields/name/stringValue")) med.name = docData.stringValue;
@@ -144,11 +180,13 @@ void fetchMedicines() {
         
         // Parse the 'times' array
         if (doc.get(docData, "fields/times/arrayValue/values")) {
-          FirebaseJsonArray &timesArray = docData.jsonObjPtr->to<FirebaseJsonArray>();
+          FirebaseJsonArray timesArray;
+          docData.getArray(timesArray);
           for (size_t j = 0; j < timesArray.size(); j++) {
             FirebaseJsonData timeData;
             timesArray.get(timeData, j);
-            FirebaseJson &timeObj = timeData.jsonObjPtr->to<FirebaseJson>();
+            FirebaseJson timeObj;
+            timeData.getJSON(timeObj);
             if (timeObj.get(timeData, "stringValue")) {
               med.time = timeData.stringValue; // Adds each time as a separate alarm entry
               medicines.push_back(med);
@@ -222,15 +260,15 @@ void snoozeAlarm() {
   lcd.print(String(snoozeIntervalMinutes) + " mins");
 }
 
-void updateIdleDisplay(DateTime now) {
+void updateIdleDisplay(struct tm timeinfo) {
   lcd.setCursor(0, 0);
-  lcd.print("Time: " + formatTime(now));
+  lcd.print("Time: " + formatTime(timeinfo));
   lcd.setCursor(0, 1);
   lcd.print("Stay Healthy!   ");
 }
 
-String formatTime(DateTime now) {
-  int hour = now.hour();
+String formatTime(struct tm timeinfo) {
+  int hour = timeinfo.tm_hour;
   String period = "AM";
   if (hour >= 12) {
     period = "PM";
@@ -238,7 +276,7 @@ String formatTime(DateTime now) {
   }
   if (hour == 0) hour = 12;
   
-  char buffer[10];
-  sprintf(buffer, "%d:%02d %s", hour, now.minute(), period.c_str());
+  char buffer[15];
+  sprintf(buffer, "%d:%02d %s", hour, timeinfo.tm_min, period.c_str());
   return String(buffer);
 }

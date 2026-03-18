@@ -33,18 +33,23 @@ class DatabaseService {
   // Helper getters
   DocumentReference get _userDoc => _db.collection('users').doc(uid);
   CollectionReference get _medicinesColl => _userDoc.collection('medicines');
-  CollectionReference get _logsColl => _userDoc.collection('logs');
+  CollectionReference get _logsColl => _userDoc.collection('doseLogs');
 
   // --- Profile Operations ---
 
   Future<void> updateProfile(UserProfile profile) async {
     if (!isFirebaseInitialized) {
-      debugPrint('MOCK: Updating profile for $uid');
+      debugPrint('MOCK: Updating profile for $uid (Offline/Demo Mode)');
       return;
     }
-    await _userDoc.set({
-      'profile': profile.toMap(),
-    }, SetOptions(merge: true));
+    try {
+      await _userDoc.set({
+        'profile': profile.toMap(),
+      }, SetOptions(merge: true));
+      debugPrint('Firestore: Profile updated for $uid');
+    } catch (e) {
+      debugPrint('Firestore Error (Update Profile): $e');
+    }
   }
 
   Future<UserProfile?> getProfile() async {
@@ -91,7 +96,7 @@ class DatabaseService {
 
   Future<DocumentReference?> addMedicine(Medicine medicine) async {
     if (!isFirebaseInitialized) {
-      debugPrint('MOCK: Adding medicine ${medicine.name}');
+      debugPrint('MOCK: Adding medicine ${medicine.name} (Offline/Demo Mode)');
       // Give the medicine a fake id and add to the in-memory list.
       final newMed = Medicine(
         id: 'demo-${DateTime.now().millisecondsSinceEpoch}',
@@ -106,7 +111,18 @@ class DatabaseService {
       _demoMedicinesController.add(List.unmodifiable(_demoMedicines));
       return null;
     }
-    return await _medicinesColl.add(medicine.toMap());
+    
+    try {
+      final docRef = await _medicinesColl.add(medicine.toMap());
+      debugPrint('Firestore: Successfully added medicine ${medicine.name}');
+      return docRef;
+    } catch (e) {
+      debugPrint('Firestore Error (Add Medicine): $e');
+      // Fallback to local list if Firestore write fails
+      _demoMedicines.add(medicine);
+      _demoMedicinesController.add(List.unmodifiable(_demoMedicines));
+      return null;
+    }
   }
 
   Stream<List<Medicine>> get medicinesStream {
@@ -156,17 +172,28 @@ class DatabaseService {
     }
     // Firebase path — deduplicate by checking existing docs today.
     final today = DateTime.now();
-    final startOfDay = DateTime(today.year, today.month, today.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
-    final existing = await _logsColl
-        .where('medId', isEqualTo: log.medId)
-        .where('timestamp', isGreaterThanOrEqualTo: startOfDay)
-        .where('timestamp', isLessThan: endOfDay)
-        .get();
-    if (existing.docs.isEmpty) {
-      await _logsColl.add(log.toMap());
-    } else {
-      debugPrint('Dose already logged for ${log.medName} today');
+    final dateStr = "${today.year}-${today.month.toString().padLeft(2,'0')}-${today.day.toString().padLeft(2,'0')}";
+    
+    // Check for existing log with same medicineName and day
+    try {
+      final existing = await _logsColl
+          .where('medicineName', isEqualTo: log.medName)
+          .get();
+          
+      final alreadyLogged = existing.docs.any((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        final takenAt = data['takenAt']?.toString() ?? '';
+        return takenAt.startsWith(dateStr);
+      });
+
+      if (!alreadyLogged) {
+        await _logsColl.add(log.toMap());
+        debugPrint('Firestore: Logged dose for ${log.medName}');
+      } else {
+        debugPrint('Dose already logged for ${log.medName} today');
+      }
+    } catch (e) {
+      debugPrint('Firestore Error (Log Dose): $e');
     }
   }
 
@@ -175,16 +202,22 @@ class DatabaseService {
     if (!isFirebaseInitialized) {
       return _demoTodayLogsStream();
     }
-    final today = DateTime.now();
-    final startOfDay = DateTime(today.year, today.month, today.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
+    // Fetch last 50 logs and filter to today in memory to handle inconsistent timestamp formats
     return _logsColl
-        .where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay))
-        .where('timestamp', isLessThan: Timestamp.fromDate(endOfDay))
+        .orderBy('takenAt', descending: true)
+        .limit(50)
         .snapshots()
-        .map((snapshot) => snapshot.docs
+        .map((snapshot) {
+          final today = DateTime.now();
+          final dateStr = "${today.year}-${today.month.toString().padLeft(2,'0')}-${today.day.toString().padLeft(2,'0')}";
+          
+          return snapshot.docs
             .map((doc) => DoseLog.fromMap(doc.id, doc.data() as Map<String, dynamic>))
-            .toList());
+            .where((log) => log.timestamp.year == today.year && 
+                            log.timestamp.month == today.month && 
+                            log.timestamp.day == today.day)
+            .toList();
+        });
   }
 
   Stream<List<DoseLog>> _demoTodayLogsStream() async* {
@@ -210,8 +243,8 @@ class DatabaseService {
       return _demoAllLogsStream();
     }
     return _logsColl
-        .orderBy('timestamp', descending: true)
-        .limit(50)
+        .orderBy('takenAt', descending: true)
+        .limit(100)
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => DoseLog.fromMap(doc.id, doc.data() as Map<String, dynamic>))

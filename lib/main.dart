@@ -22,10 +22,12 @@ void main() async {
   
   // Initialize Firebase
   try {
+    debugPrint('Firebase: Initializing...');
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
     isFirebaseInitialized = true;
+    debugPrint('Firebase: Successfully initialized!');
     
     // Enable offline persistence
     FirebaseFirestore.instance.settings = const Settings(
@@ -35,8 +37,9 @@ void main() async {
     
     await NotificationService().init();
   } catch (e) {
-    debugPrint('Firebase initialization error: $e');
-    debugPrint('Running in DEMO MODE without Firebase connectivity.');
+    debugPrint('Firebase ERROR: Initialization failed!');
+    debugPrint('Error details: $e');
+    debugPrint('CRITICAL: Running in DEMO MODE. Data will NOT be saved to Firestore.');
   }
 
   SystemChrome.setSystemUIOverlayStyle(
@@ -796,6 +799,44 @@ class _HelpScreenState extends State<HelpScreen> {
     );
   }
 
+  void _handleSignOut() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF161B22),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.logout_rounded, color: Color(0xFFEF5350)),
+            SizedBox(width: 12),
+            Text('Sign Out', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to sign out?',
+          style: TextStyle(color: Color(0xFF8B949E), fontSize: 16),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF8B949E))),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              AuthService().signOut();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFD32F2F),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -929,6 +970,16 @@ class _HelpScreenState extends State<HelpScreen> {
                 value: 'Connected',
                 color: const Color(0xFF4CAF50),
                 onTap: null,
+              ),
+              const SizedBox(height: 12),
+
+              // Sign Out tile
+              _buildSettingsTile(
+                icon: Icons.logout_rounded,
+                title: 'Sign Out',
+                value: 'Exit',
+                color: const Color(0xFFEF5350),
+                onTap: _handleSignOut,
               ),
               const SizedBox(height: 32),
             ],
